@@ -22,9 +22,10 @@
   * *Responsibility:* Architectural review, technical mentorship, research alignment, and validation of problem statement constraints.
 
 ### Student Team Members
-* **Aditya Bhalekar** (`bhalekaraditya9@gmail.com`) – **Project Lead & Core Systems Engineer**
+* **Aditya Bhalekar** ([@Aditya93151](https://github.com/Aditya93151)) – **Project Lead & Core Systems Engineer**
+  * *Email:* `bhalekaraditya9@gmail.com`
   * *Responsibility:* End-to-end design and implementation of the gateway-assisted offloading architecture, ESP32 MbedTLS client firmware development, BIND9/Unbound DNSSEC zone setup, HMAC authentication pipeline, benchmarking, and technical documentation.
-* **Varun Gowda** – **Project Documentation & Asset Support**
+* **Varun Gowda** ([@VarunG-99](https://github.com/VarunG-99)) – **Project Documentation & Asset Support**
   * *Responsibility:* Assisting with submission asset organization, repository upkeep, slide formatting verification, and presentation material review.
 
 ---
