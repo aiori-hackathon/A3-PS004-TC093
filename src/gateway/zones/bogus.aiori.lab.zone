@@ -1,0 +1,6 @@
+; Corrupted RRSIG signature zone simulation for PS-004 testing
+$TTL 86400
+@   IN  SOA ns1.aiori.lab. admin.aiori.lab. ( 2026102001 3600 1800 604800 86400 )
+@   IN  NS  ns1.aiori.lab.
+app IN  A   10.0.0.99
+; Invalid RRSIG record payload forces Gateway SERVFAIL

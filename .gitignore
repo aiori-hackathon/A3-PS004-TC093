@@ -1,0 +1,14 @@
+# Python temporary files
+__pycache__/
+*.pyc
+*.pyo
+
+# Certificates and private keys
+*.key
+*.pem
+
+# PlatformIO / Arduino IDE Build files
+.pio/
+.vscode/
+*.bin
+*.elf

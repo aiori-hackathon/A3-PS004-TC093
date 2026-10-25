@@ -1,0 +1,21 @@
+==========================================
+ ESP32 DNSSEC Offloaded Client Initializing
+==========================================
+[HEAP] Free Heap before Wi-Fi Connect: 284312 bytes
+....
+[WIFI] Connected! IP Address: 192.168.1.105
+[HEAP] Free Heap after Wi-Fi Connect: 271840 bytes
+
+------------------------------------------
+[QUERY] Initiating resolution for: secure.aiori.lab
+[SUCCESS] Verified IP: 192.168.1.150
+[METRICS] Execution Time: 18 ms
+[METRICS] Free Heap Before/After: 271840 B / 257840 B (Delta: 14000 bytes)
+------------------------------------------
+
+------------------------------------------
+[QUERY] Initiating resolution for: bogus.aiori.lab
+[SECURITY REJECT] Gateway flagged domain as BOGUS (Signature Invalid)!
+[METRICS] Execution Time: 22 ms
+[METRICS] Free Heap Before/After: 257840 B / 257840 B (Delta: 0 bytes)
+------------------------------------------
