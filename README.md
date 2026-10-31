@@ -21,18 +21,22 @@ This project implements an **Authenticated Gateway-Assisted DNSSEC Architecture*
 ---
 
 ## 🏗️ Solution Architecture & Data Flow
-''' text
-+------------------+     UDP/TCP (5353)     +-------------------------+
-|                  | ---------------------> |                         |
-|   IoT Node       |                        |  Unbound Resolver       |
-|   (ESP32)        | <--------------------- |  (Docker Container)     |
-|                  |  37-Byte HMAC Frame    |                         |
-+------------------+     Port 8530          +-------------------------+
-        ^                                               |
-        +-----------------------------------------------+
-                         Gateway Proxy
-                     (gateway_proxy.py)
-'''
+## 🏗️ Solution Architecture & Data Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant ESP as ESP32 IoT Client
+    participant GW as Gateway Proxy (Port 8530)
+    participant UNB as Unbound Resolver (Port 5353)
+
+    ESP->>GW: 1. Send DNS Query (e.g., 'secure.aiori.lab')
+    GW->>UNB: 2. Proxy Query over UDP/TCP
+    UNB-->>GW: 3. Return DNS Answer + AD-Flag (RRSIG Verified)
+    Note over GW: Construct 37-Byte Payload:<br/>[IP (4B) | Status Flag (1B) | HMAC-SHA256 (32B)]
+    GW-->>ESP: 4. Transmit Authenticated Binary Frame
+    Note over ESP: Verify 32-byte HMAC using local PSK<br/>Accept IP (0x00) or Discard Frame (0x01/Mismatch)
+```
 
 1. **DNSSEC Offloading:** The Unbound Docker container resolves target zones (`secure.aiori.lab`, `bogus.aiori.lab`, `insecure.aiori.lab`) and performs upstream RRSIG validation.
 2. **Payload Packaging:** The Gateway Proxy constructs a 37-byte binary payload:
