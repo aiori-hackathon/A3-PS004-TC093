@@ -23,6 +23,7 @@ A high-performance edge-security architecture designed to offload heavy DNSSEC (
 
 To minimize SRAM overhead and memory copies on the ESP32, resolved DNS records are encapsulated into a fixed 37-byte binary payload:
 
+```text
 +------------------------+------------------------+-----------------------------------+
 | IPv4 Address Payload   | Gateway Status Flag    | HMAC-SHA256 Signature             |
 | (Bytes 0 - 3)          | (Byte 4)               | (Bytes 5 - 36)                    |
@@ -30,8 +31,7 @@ To minimize SRAM overhead and memory copies on the ESP32, resolved DNS records a
 | e.g. 10.0.0.1          | 0x00 (Valid)           | 32-Byte Cryptographic Hash        |
 |                        | 0x01 (BOGUS RRSIG)     | Computed over Bytes 0 - 4         |
 +------------------------+------------------------+-----------------------------------+
-
----
+```
 
 ## 🛡️ Threat Vector Verification Suite
 
@@ -67,6 +67,7 @@ bash demo.sh
 
 ## 📁 Repository Structure
 
+```text
 ├── app.py                  # Streamlit SOC Dashboard & Hardware Animator
 ├── proxy_gateway.py        # Edge Gateway Proxy & 37-Byte Encoder (Port 8530)
 ├── unbound_resolver.py     # Recursive Unbound DNSSEC Validation Wrapper
@@ -76,3 +77,4 @@ bash demo.sh
 ├── docker-compose.yml      # Containerized Unbound Resolver Setup
 └── src/
     └── main.cpp            # ESP32 C++ mbedTLS Verification Logic
+```
