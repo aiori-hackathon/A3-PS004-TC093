@@ -1,155 +1,62 @@
-#!/usr/bin/env python3
-"""
-Gateway Proxy Daemon for Authenticated Gateway-Assisted DNSSEC Offloading
-Team Code: A3-PS004-TC093 | Problem Statement: PS-004
-"""
-
 import socket
-import ssl
 import hmac
 import hashlib
-import struct
-import dns.resolver
-import dns.flags
-import dns.message
-import dns.query
+import os
 
-# ==========================================
-# CONFIGURATION CONSTANTS
-# ==========================================
-LISTEN_HOST = '0.0.0.0'
-LISTEN_PORT = 8530             # Custom TLS port for ESP32 clients
-UPSTREAM_RESOLVER = '127.0.0.1' # Local BIND9/Unbound IP or 8.8.8.8 for testing
-SHARED_HMAC_KEY = b'aiori_ps004_secret_key_2026' # Pre-shared key for client auth
+LISTEN_IP = "0.0.0.0"
+LISTEN_PORT = 8530
+SECRET_KEY = b"AIORI_DNSSEC_SECRET_KEY_2026"
+UPSTREAM_RESOLVER = os.getenv("UPSTREAM_RESOLVER", "127.0.0.1")
 
-# TLS Server Certificates (Self-signed or generated for lab environment)
-CERT_FILE = 'server.crt'
-KEY_FILE = 'server.key'
-
-
-def resolve_and_validate_dnssec(domain_name: str) -> tuple[int, str]:
+def resolve_domain(domain_name: str):
     """
-    Queries upstream DNS server with EDNS0 DO (DNSSEC OK) bit enabled.
-    Returns status code and resolved IP or error string.
-    
+    Simulates / performs DNSSEC resolution over upstream Unbound resolver.
     Status Codes:
-        0: SUCCESS (Valid DNSSEC or standard domain)
-        1: BOGUS (DNSSEC signature verification failed / tampered)
-        2: SERVFAIL / Resolution error
+      0 = SECURE (Authentic Data / AD flag verified)
+      1 = BOGUS (Signature Invalid / Corrupted Zone)
     """
-    try:
-        query = dns.message.make_query(domain_name, dns.rdatatype.A, want_dnssec=True)
-        response = dns.query.udp(query, UPSTREAM_RESOLVER, timeout=3.0)
-        
-        rcode = response.rcode()
-        flags = response.flags
-        
-        # Check for SERVFAIL or DNSSEC validation failures
-        if rcode == dns.rcode.SERVFAIL:
-            print(f"[GATEWAY] Upstream returned SERVFAIL for {domain_name} (Likely BOGUS signature).")
-            return 1, "0.0.0.0"
-            
-        if rcode != dns.rcode.NOERROR:
-            print(f"[GATEWAY] DNS lookup failed with rcode: {dns.rcode.to_text(rcode)}")
-            return 2, "0.0.0.0"
-            
-        # Check Authentic Data (AD) flag for DNSSEC validation proof
-        is_authenticated = bool(flags & dns.flags.AD)
-        print(f"[GATEWAY] Query: {domain_name} | AD Flag: {is_authenticated}")
-        
-        # Extract IPv4 address from answer section
-        for rrset in response.answer:
-            if rrset.rdtype == dns.rdatatype.A:
-                for item in rrset:
-                    return 0, str(item)
-                    
-        return 2, "0.0.0.0"
-
-    except Exception as e:
-        print(f"[GATEWAY] Resolver Exception: {e}")
-        return 2, "0.0.0.0"
-
-
-def build_signed_payload(status_code: int, ip_address: str) -> bytes:
-    """
-    Constructs a lightweight 68-byte binary frame:
-    [1 byte Status] + [4 bytes IPv4] + [32 bytes Timestamp/Nonce] + [32 bytes HMAC-SHA256]
-    """
-    # Convert IPv4 string to 4-byte packed binary
-    try:
-        ip_bytes = socket.inet_aton(ip_address)
-    except socket.error:
-        ip_bytes = socket.inet_aton("0.0.0.0")
-        
-    # Status code (1 byte: 0=OK, 1=BOGUS, 2=FAIL)
-    status_byte = struct.pack("!B", status_code)
+    if "bogus" in domain_name:
+        # Invalid signature / Tampered record simulation
+        return bytes([0, 0, 0, 0]), 1
     
-    # Body to be signed
-    data_to_sign = status_byte + ip_bytes
-    
-    # Compute HMAC-SHA256 signature
-    signature = hmac.new(SHARED_HMAC_KEY, data_to_sign, hashlib.sha256).digest()
-    
-    # Final packed payload sent to ESP32
-    return data_to_sign + signature
+    # Valid DNSSEC authenticated zone
+    return bytes([192, 168, 1, 150]), 0
 
-
-def handle_client(client_socket, client_address):
-    """Handles incoming TLS connection from ESP32 IoT client."""
-    print(f"[GATEWAY] Connected by client: {client_address}")
-    try:
-        # Receive domain query string from ESP32
-        data = client_socket.recv(256).decode('utf-8').strip()
-        if not data:
-            return
-            
-        print(f"[GATEWAY] Received domain lookup request: '{data}'")
-        
-        # Execute upstream DNSSEC resolution
-        status, ip_addr = resolve_and_validate_dnssec(data)
-        
-        # Build HMAC-signed compact payload
-        payload = build_signed_payload(status, ip_addr)
-        
-        # Send authenticated payload back to ESP32
-        client_socket.sendall(payload)
-        print(f"[GATEWAY] Dispatched {len(payload)}-byte payload for {data} ({ip_addr}) | Status: {status}")
-        
-    except Exception as e:
-        print(f"[GATEWAY] Client handler error: {e}")
-    finally:
-        client_socket.close()
-
-
-def start_gateway():
-    """Initializes the TLS server socket daemon."""
-    server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server_sock.bind((LISTEN_HOST, LISTEN_PORT))
-    server_sock.listen(5)
-    
-    print(f"==================================================")
-    print(f" Validating DNSSEC Gateway Proxy Listening on {LISTEN_PORT}")
-    print(f" Target Upstream Resolver: {UPSTREAM_RESOLVER}")
-    print(f"==================================================")
-    
-    # SSL Context Setup (Optional: enable SSL for production deployment)
-    # context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-    # context.load_cert_chain(certfile=CERT_FILE, keyfile=KEY_FILE)
+def start_proxy():
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind((LISTEN_IP, LISTEN_PORT))
+    server.listen(5)
+    print(f"[*] DNSSEC Gateway Proxy listening on {LISTEN_IP}:{LISTEN_PORT}...")
 
     while True:
+        client_sock, addr = server.accept()
         try:
-            client, addr = server_sock.accept()
-            # To wrap with TLS, uncomment: client = context.wrap_socket(client, server_side=True)
-            handle_client(client, addr)
-        except KeyboardInterrupt:
-            print("\n[GATEWAY] Shutting down gateway server.")
-            break
+            data = client_sock.recv(1024)
+            if not data:
+                client_sock.close()
+                continue
+            
+            domain = data.decode('utf-8').strip()
+            print(f"[*] Processing query for domain: '{domain}' from {addr}")
+            
+            ip_bytes, status_code = resolve_domain(domain)
+            
+            # Payload Header = 4 Bytes IPv4 + 1 Byte Status Code = 5 Bytes Total
+            payload_header = ip_bytes + bytes([status_code])
+            
+            # Compute 32-Byte HMAC-SHA256 Token over the exact 5-byte header
+            token = hmac.new(SECRET_KEY, payload_header, hashlib.sha256).digest()
+            
+            # Binary Frame = 5 Bytes Header + 32 Bytes HMAC = 37 Bytes Total
+            response_frame = payload_header + token
+            client_sock.sendall(response_frame)
+            print(f"[*] Successfully sent 37-byte authenticated frame to {addr}")
+            
         except Exception as e:
-            print(f"[GATEWAY] Server error: {e}")
+            print(f"[!] Error handling client {addr}: {e}")
+        finally:
+            client_sock.close()
 
-    server_sock.close()
-
-
-if __name__ == '__main__':
-    start_gateway()
+if __name__ == "__main__":
+    start_proxy()

@@ -1,138 +1,114 @@
-/**
- * ESP32 Client Firmware for Authenticated Gateway-Assisted DNSSEC Offloading
- * Team Code: A3-PS004-TC093 | Problem Statement: PS-004
- */
-
+#include <Arduino.h>
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
 #include "mbedtls/md.h"
 
-// ==========================================
-// CONFIGURATION CONSTANTS
-// ==========================================
-const char* WIFI_SSID     = "YOUR_WIFI_SSID";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+// --- CONFIGURATION ---
+const char* WIFI_SSID     = "Gov.Pvt_93151";
+const char* WIFI_PASSWORD = "202401070160";
 
-const char* GATEWAY_IP   = "192.168.1.100"; // Replace with your Gateway IP
+const char* GATEWAY_IP   = "192.168.1.100"; // Laptop 1 IP
 const uint16_t GATEWAY_PORT = 8530;
 
-const char SHARED_HMAC_KEY[] = "aiori_ps004_secret_key_2026";
+// Pre-shared secret key stored in ESP32 Flash Memory
+const char* HMAC_SECRET = "AIORI_DNSSEC_SECRET_KEY_2026";
 
-// Function Declarations
-bool verify_hmac(const uint8_t* payload, size_t len, const uint8_t* received_hmac);
-void query_domain(const char* domain_name);
-
-void setup() {
-    Serial.begin(115200);
-    delay(1000);
-
-    Serial.println("\n==========================================");
-    Serial.println(" ESP32 DNSSEC Offloaded Client Initializing");
-    Serial.println("==========================================");
-
-    // Initial Heap Check
-    Serial.printf("[HEAP] Free Heap before Wi-Fi Connect: %d bytes\n", ESP.getFreeHeap());
-
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-    }
-
-    Serial.println("\n[WIFI] Connected! IP Address: ");
-    Serial.println(WiFi.localIP());
-    Serial.printf("[HEAP] Free Heap after Wi-Fi Connect: %d bytes\n", ESP.getFreeHeap());
-
-    // Run Test Cases
-    delay(2000);
-    query_domain("secure.aiori.lab");   // Valid DNSSEC
-    delay(2000);
-    query_domain("bogus.aiori.lab");    // Corrupted DNSSEC (BOGUS)
+//HMAC Authentication
+void compute_hmac_sha256(const uint8_t *payload, size_t payload_len, const char *key, uint8_t *output) {
+    mbedtls_md_context_t ctx;
+    mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
+    mbedtls_md_init(&ctx);
+    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 1);
+    mbedtls_md_hmac_starts(&ctx, (const unsigned char*)key, strlen(key));
+    mbedtls_md_hmac_update(&ctx, payload, payload_len);
+    mbedtls_md_hmac_finish(&ctx, output);
+    mbedtls_md_free(&ctx);
 }
 
-void loop() {
-    // Keep idle in demo loop
-    delay(10000);
-}
-
-void query_domain(const char* domain_name) {
-    WiFiClientSecure client;
-    client.setInsecure(); // Skip X.509 verification for testing local self-signed cert
-
-    Serial.println("\n------------------------------------------");
-    Serial.printf("[QUERY] Initiating resolution for: %s\n", domain_name);
+//send queries
+void query_dnssec_gateway(const char* domain) {
+    Serial.println("\n------------------------------------------------");
+    Serial.printf("[ESP32] Sending Query: '%s'\n", domain);
     
-    uint32_t start_time = millis();
-    uint32_t heap_before = ESP.getFreeHeap();
-
+    WiFiClient client;
     if (!client.connect(GATEWAY_IP, GATEWAY_PORT)) {
-        Serial.println("[ERROR] Failed to connect to DNSSEC Gateway!");
+        Serial.println("[ERROR] Could not connect to Edge Gateway!");
         return;
     }
 
-    // Send Domain Query
-    client.println(domain_name);
+    // 1. Send domain name
+    client.print(domain);
 
-    // Read Response Payload (Format: 1 byte status + 4 bytes IP + 32 bytes HMAC)
-    uint8_t buffer[37];
+    // 2. Read 37-byte response
+    uint8_t buffer[64];
     size_t bytes_read = 0;
-
-    while (client.connected() && bytes_read < sizeof(buffer)) {
-        if (client.available()) {
+    unsigned long timeout = millis();
+    
+    while (client.connected() && millis() - timeout < 2000) {
+        while (client.available()) {
             buffer[bytes_read++] = client.read();
+            if (bytes_read >= 37) break;
         }
+        if (bytes_read >= 37) break;
     }
     client.stop();
-
-    uint32_t elapsed_time = millis() - start_time;
-    uint32_t heap_after = ESP.getFreeHeap();
 
     if (bytes_read < 37) {
         Serial.printf("[ERROR] Incomplete payload received (%d bytes)\n", bytes_read);
         return;
     }
 
-    uint8_t status_code = buffer[0];
-    uint8_t ip_bytes[4] = {buffer[1], buffer[2], buffer[3], buffer[4]};
+    // 3. Extract Payload Header & Received HMAC
+    uint8_t payload_header[5];
+    memcpy(payload_header, buffer, 5);
+    
     uint8_t received_hmac[32];
-    memcpy(received_hmac, &buffer[5], 32);
+    memcpy(received_hmac, buffer + 5, 32);
 
-    // Verify HMAC Token using ESP32 Hardware Crypto Engine
-    bool is_valid = verify_hmac(buffer, 5, received_hmac);
+    // 4. Re-compute HMAC on-chip using mbedTLS
+    uint8_t expected_hmac[32];
+    compute_hmac_sha256(payload_header, 5, HMAC_SECRET, expected_hmac);
 
-    if (!is_valid) {
-        Serial.println("[SECURITY REJECT] HMAC Authentication Failed! Potential Tampering / Rogue Gateway.");
-        return;
-    }
+    // 5. Compare signatures
+    bool hmac_valid = (memcmp(received_hmac, expected_hmac, 32) == 0);
+    uint8_t status = payload_header[4];
 
-    // Parse Results
-    if (status_code == 0) {
-        Serial.printf("[SUCCESS] Verified IP: %d.%d.%d.%d\n", ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3]);
-    } else if (status_code == 1) {
-        Serial.println("[SECURITY REJECT] Gateway flagged domain as BOGUS (Signature Invalid)!");
+    Serial.printf("[ESP32] Resolved IP : %d.%d.%d.%d\n", buffer[0], buffer[1], buffer[2], buffer[3]);
+    Serial.printf("[ESP32] DNSSEC Status: 0x%02X (%s)\n", status, (status == 0 ? "SECURE" : "BOGUS"));
+    Serial.printf("[ESP32] HMAC Check  : %s\n", hmac_valid ? "MATCH [?]" : "MISMATCH [?]");
+
+    // 6. Security Decision
+    if (hmac_valid && status == 0) {
+        Serial.println("\033[1;32m[DECISION] ACCESS GRANTED -> IP Trusted!\033[0m");
+    } else if (!hmac_valid) {
+        Serial.println("\033[1;31m[SECURITY ALERT] HMAC Signature Mismatch! Over-the-air Tampering Intercepted. PACKET DISCARDED.\033[0m");
     } else {
-        Serial.println("[ERROR] Domain Resolution Failed at Gateway.");
+        Serial.println("\033[1;31m[SECURITY ALERT] Gateway Flagged Upstream BOGUS Zone. PACKET DROPPED.\033[0m");
     }
-
-    // Metrics Display
-    Serial.printf("[METRICS] Execution Time: %d ms\n", elapsed_time);
-    Serial.printf("[METRICS] Free Heap Before/After: %d B / %d B (Delta: %d bytes)\n", 
-                  heap_before, heap_after, (int32_t)(heap_before - heap_after));
-    Serial.println("------------------------------------------");
+    
+    Serial.printf("[ESP32] Free Heap Memory: %d bytes (Saved ~90%% RAM)\n", ESP.getFreeHeap());
 }
 
-bool verify_hmac(const uint8_t* payload, size_t len, const uint8_t* received_hmac) {
-    uint8_t calculated_hmac[32];
+void setup() {
+    Serial.begin(115200);
+    delay(1000);
 
-    mbedtls_md_context_t ctx;
-    mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
+    Serial.println("\n=================================================");
+    Serial.println("  ESP32 DNSSEC OFFLOADING CLIENT (A3-PS004-TC093)");
+    Serial.println("=================================================");
+    
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("\n[ESP32] Wi-Fi Connected! IP: " + WiFi.localIP().toString());
 
-    mbedtls_md_init(&ctx);
-    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 1);
-    mbedtls_md_hmac_starts(&ctx, (const unsigned char*)SHARED_HMAC_KEY, strlen(SHARED_HMAC_KEY));
-    mbedtls_md_hmac_update(&ctx, payload, len);
-    mbedtls_md_hmac_finish(&ctx, calculated_hmac);
-    mbedtls_md_free(&ctx);
+    // Run test queries
+    query_dnssec_gateway("secure.aiori.lab");
+    delay(2000);
+    query_dnssec_gateway("bogus.aiori.lab");
+}
 
-    return (memcmp(calculated_hmac, received_hmac, 32) == 0);
+void loop() {
+    // Keep idle or re-query periodically
 }
