@@ -1,14 +1,25 @@
-# Python temporary files
+cat << 'EOF' > .gitignore
+# Python bytecode & cache
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*$py.class
+.pytest_cache/
 
-# Certificates and private keys
-*.key
-*.pem
+# Environments
+.venv/
+venv/
+ENV/
 
-# PlatformIO / Arduino IDE Build files
-.pio/
+# Streamlit / IDE
+.streamlit/
 .vscode/
-*.bin
-*.elf
+.idea/
+
+# OS / Swap files
+.DS_Store
+*.swp
+*.tmp
+
+# Logs
+logs/*.log
+EOF

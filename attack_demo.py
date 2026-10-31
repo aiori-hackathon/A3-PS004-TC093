@@ -46,6 +46,15 @@ def run_threat_simulation(scenario_num, title, domain, client_secret, tamper_ove
             expected_hmac = hmac.new(client_secret, data[:5], hashlib.sha256).digest()
             hmac_valid = (received_hmac == expected_hmac)
             
+            # Scenario: Unsigned / Insecure Zone (0x02)
+            if status == 2:
+                print(f" ├── Gateway DNSSEC    : \033[1;33m0x02 (INSECURE / UNSIGNED ZONE)\033[0m")
+                print(f" ├── Resolved IPv4     : {ip}")
+                print(f" ├── HMAC Integrity    : \033[1;32mAUTHENTIC GATEWAY ALERT [✓]\033[0m")
+                print(f" └── Security Decision : \033[1;33m[! WARNING] Fallback Policy Applied\033[0m\n")
+                return
+
+            # Scenario: Bogus DNSSEC Signature (0x01)
             if status != 0:
                 print(f" ├── Gateway DNSSEC    : \033[1;31m0x01 (BOGUS / INVALID RRSIG)\033[0m")
                 print(f" ├── Gateway Action    : Returned Null IP (0.0.0.0)")
@@ -53,13 +62,15 @@ def run_threat_simulation(scenario_num, title, domain, client_secret, tamper_ove
                 print(f" └── Security Decision : \033[1;31m[✓ DROPPED] Upstream DNS Spoof Blocked at Edge\033[0m\n")
                 return
 
+            # Scenario: HMAC Key Mismatch / MITM Tampering
             if not hmac_valid:
-                print(f" ├── Received IPv4     : {ip} \033[1;31m(Spoofed C2 Target)\033[0m")
+                print(f" ├── Received IPv4     : {ip} \033[1;31m(Unverified Target)\033[0m")
                 print(f" ├── HMAC Verification : \033[1;31mFAILED [SIGNATURE MISMATCH]\033[0m")
                 print(f" ├── Action Taken      : ESP32 Client Discarded Frame")
-                print(f" └── Security Decision : \033[1;31m[✓ DROPPED] MITM / Forged Payload Intercepted\033[0m\n")
+                print(f" └── Security Decision : \033[1;31m[✓ DROPPED] Rogue Gateway / MITM Intercepted\033[0m\n")
                 return
 
+            # Scenario: Legitimate Secure Query (0x00)
             print(f" ├── Upstream DNSSEC   : \033[1;32m0x00 (SECURE / AD VERIFIED)\033[0m")
             print(f" ├── Resolved IPv4     : \033[1;32m{ip}\033[0m")
             print(f" ├── Processing Time   : {latency:.2f} ms")
@@ -74,11 +85,24 @@ def run_threat_simulation(scenario_num, title, domain, client_secret, tamper_ove
 
 def main():
     print_banner()
+    # Scenario 1: Legitimate Query (0x00)
     run_threat_simulation(1, "Legitimate ESP32 Query", "secure.aiori.lab", LEGIT_SECRET)
-    time.sleep(1.2)
+    time.sleep(1.0)
+    
+    # Scenario 2: Upstream DNSSEC Tampering (0x01)
     run_threat_simulation(2, "DNS Poisoning Attack (Corrupted Signature)", "bogus.aiori.lab", LEGIT_SECRET)
-    time.sleep(1.2)
-    run_threat_simulation(3, "Local Wi-Fi MITM Packet Alteration", "secure.aiori.lab", FORGED_SECRET, tamper_over_air=True)
+    time.sleep(1.0)
+    
+    # Scenario 3: Unsigned Zone Fallback (0x02)
+    run_threat_simulation(3, "Unsigned Domain Request", "insecure.aiori.lab", LEGIT_SECRET)
+    time.sleep(1.0)
+    
+    # Scenario 4: Over-the-Air Packet Tampering
+    run_threat_simulation(4, "Local Wi-Fi MITM Packet Alteration", "secure.aiori.lab", LEGIT_SECRET, tamper_over_air=True)
+    time.sleep(1.0)
+    
+    # Scenario 5: Rogue Gateway / Untrusted PSK (0x03)
+    run_threat_simulation(5, "Rogue Gateway Impersonation", "secure.aiori.lab", FORGED_SECRET)
 
 if __name__ == "__main__":
     main()

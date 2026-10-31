@@ -1,23 +1,12 @@
 version: '3.8'
 
 services:
-  # Upstream Validating DNSSEC Resolver (Unbound)
   unbound-resolver:
     image: mvance/unbound:latest
     container_name: aiori_dnssec_resolver
     ports:
-      - "53:53/udp"
-      - "53:53/tcp"
-    restart: unless-stopped
-
-  # Authenticated Gateway Proxy Engine
-  gateway-proxy:
-    build: .
-    container_name: aiori_gateway_proxy
-    ports:
-      - "8530:8530"
-    environment:
-      - UPSTREAM_RESOLVER=unbound-resolver
-    depends_on:
-      - unbound-resolver
+      - "5353:53/udp"
+      - "5353:53/tcp"
+    volumes:
+      - ./zones/zones.conf:/opt/unbound/etc/unbound/unbound.conf:ro
     restart: unless-stopped
