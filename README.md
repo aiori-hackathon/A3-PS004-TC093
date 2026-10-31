@@ -21,8 +21,7 @@ This project implements an **Authenticated Gateway-Assisted DNSSEC Architecture*
 ---
 
 ## 🏗️ Solution Architecture & Data Flow
----
-
+''' text
 +------------------+     UDP/TCP (5353)     +-------------------------+
 |                  | ---------------------> |                         |
 |   IoT Node       |                        |  Unbound Resolver       |
@@ -33,7 +32,6 @@ This project implements an **Authenticated Gateway-Assisted DNSSEC Architecture*
         +-----------------------------------------------+
                          Gateway Proxy
                      (gateway_proxy.py)
----
 
 1. **DNSSEC Offloading:** The Unbound Docker container resolves target zones (`secure.aiori.lab`, `bogus.aiori.lab`, `insecure.aiori.lab`) and performs upstream RRSIG validation.
 2. **Payload Packaging:** The Gateway Proxy constructs a 37-byte binary payload:
