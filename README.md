@@ -78,4 +78,6 @@ A3-PS004-TC093/
         ├── requirements.txt  # Python Dependencies
         └── zones/
             └── zones.conf    # Authoritative DNSSEC Zone Definitions
-            ├──
+            ├── bogus.aiori.lab.zone 
+            ├── insecure.aiori.lab.zone
+            ├── secure.aiori.lab.zone
