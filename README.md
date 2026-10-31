@@ -15,8 +15,8 @@ This project implements an **Authenticated Gateway-Assisted DNSSEC Architecture*
 
 ## 📽️ Project Demonstrations & Videos
 
-* **Round 1 Demo Video:** [Watch on YouTube]()
-* **Round 2 Final Proof-of-Concept Video:** `[INSERT NEW YOUTUBE VIDEO LINK HERE]`
+* **Round 1 Demo Video:** [Watch on YouTube](https://youtu.be/jABrWfCZKCs?si=P8RhQC_bHtCmWz1x)
+* **Round 2 Final Proof-of-Concept Video:** `https://youtu.be/HBuEAOm0DVE?si=KeEvFNIZhkMj4hde`
 
 ---
 
