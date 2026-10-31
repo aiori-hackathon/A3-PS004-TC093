@@ -10,10 +10,10 @@ A high-performance edge-security architecture designed to offload heavy DNSSEC (
 
 ```mermaid
 flowchart LR
-    A["🌐 Upstream DNSSEC Root<br/><i>unbound_resolver.py</i><br/><i>docker-compose.yml</i>"] -- "RSA / ECDSA Signed" --> B["🛡️ Edge Gateway Proxy<br/><i>proxy_gateway.py (Port 8530)</i>"]
-    B -- "37B HMAC Frame" --> C["⚡ ESP32 MCU Node<br/><i>main.cpp</i><br/><i>test_mbedtls.py</i>"]
+    A["🌐 Upstream DNSSEC Root<br/><i>Containerized Unbound Resolver</i><br/><i>docker-compose.yml</i>"] -- "RSA / ECDSA Signed" --> B["🛡️ Edge Gateway Proxy & SOC<br/><i>src/proxy_gateway.py (Port 8530)</i><br/><i>app.py (Streamlit)</i>"]
+    B -- "37B HMAC Frame" --> C["⚡ ESP32 MCU / Simulated Node<br/><i>src/main.cpp (mbedTLS)</i><br/><i>node_controller.py (Simulator)</i>"]
     
-    D["🥷 Rogue MITM Attacker<br/><i>node_controller.py</i><br/><i>attack_demo.py</i>"] -. "Injection / Spoof / Replay" .-> C
+    D["🥷 Rogue MITM Attacker<br/><i>attack_demo.py</i>"] -. "Injection / Spoof / Replay" .-> C
 
     style A fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#fff
     style B fill:#0f172a,stroke:#06b6d4,stroke-width:2px,color:#fff
