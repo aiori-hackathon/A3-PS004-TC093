@@ -8,16 +8,18 @@ A high-performance edge-security architecture designed to offload heavy DNSSEC (
 
 ## 🏗️ End-to-End System Architecture
 
-[ Upstream DNSSEC Root ] ──(RSA/ECDSA)──► [ Edge Gateway Proxy ] ──(37B HMAC Frame)──► [ ESP32 MCU Node ]
-  unbound_resolver.py                        proxy_gateway.py                            main.cpp
-  docker-compose.yml                         (Port 8530)                                 test_mbedtls.py
-                                                    ▲
-                                                    │ (Injection / Spoof)
-                                         [ Rogue MITM Attacker ]
-                                            node_controller.py
-                                            attack_demo.py
+```mermaid
+flowchart LR
+    A["🌐 Upstream DNSSEC Root<br/><i>unbound_resolver.py</i><br/><i>docker-compose.yml</i>"] -- "RSA / ECDSA Signed" --> B["🛡️ Edge Gateway Proxy<br/><i>proxy_gateway.py (Port 8530)</i>"]
+    B -- "37B HMAC Frame" --> C["⚡ ESP32 MCU Node<br/><i>main.cpp</i><br/><i>test_mbedtls.py</i>"]
+    
+    D["🥷 Rogue MITM Attacker<br/><i>node_controller.py</i><br/><i>attack_demo.py</i>"] -. "Injection / Spoof / Replay" .-> C
 
----
+    style A fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#fff
+    style B fill:#0f172a,stroke:#06b6d4,stroke-width:2px,color:#fff
+    style C fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#fff
+    style D fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fff
+```
 
 ## 📦 37-Byte Wire Frame Layout
 
