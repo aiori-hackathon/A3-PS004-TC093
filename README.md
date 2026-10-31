@@ -1,82 +1,75 @@
-# 🛡️ AIORI Gateway-Assisted DNSSEC & ESP32 Hardware Last-Mile HMAC Assurance
+# PS-004: Authenticated Gateway-Assisted DNSSEC for IoT Clients
 
-> **Problem Statement:** A3-PS004 | **Team:** TC-093 | **Project Name:** AIORI Security Operations Center
-
-A high-performance edge-security architecture designed to offload heavy DNSSEC (RSA-2048 / ECDSA) validation from resource-constrained IoT nodes to a Linux Edge Gateway, while maintaining last-mile cryptographic integrity over local Wi-Fi via 37-byte structured frames and hardware-backed HMAC-SHA256 verification.
+**Team ID:** TC093  
+**Track:** AIORI Hackathon - IoT & Edge Security  
 
 ---
 
-## 🏗️ End-to-End System Architecture
+## 📌 Problem Overview
 
-```mermaid
-flowchart LR
-    A["🌐 Upstream DNSSEC Root<br/><i>Containerized Unbound Resolver</i><br/><i>docker-compose.yml</i>"] -- "RSA / ECDSA Signed" --> B["🛡️ Edge Gateway Proxy & SOC<br/><i>src/proxy_gateway.py (Port 8530)</i><br/><i>app.py (Streamlit)</i>"]
-    B -- "37B HMAC Frame" --> C["⚡ ESP32 MCU / Simulated Node<br/><i>src/main.cpp (mbedTLS)</i><br/><i>node_controller.py (Simulator)</i>"]
-    
-    D["🥷 Rogue MITM Attacker<br/><i>attack_demo.py</i>"] -. "Injection / Spoof / Replay" .-> C
+Resource-constrained IoT microcontrollers (e.g., ESP32) lack the computational memory and stack bandwidth required to perform full DNSSEC cryptographic validation, complex chain-of-trust parsing, and public key RSA/ECDSA verification. This limitation leaves edge nodes vulnerable to local Wi-Fi Man-in-the-Middle (MITM) attacks, DNS cache poisoning, and rogue gateway impersonation.
 
-    style A fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#fff
-    style B fill:#0f172a,stroke:#06b6d4,stroke-width:2px,color:#fff
-    style C fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#fff
-    style D fill:#450a0a,stroke:#ef4444,stroke-width:2px,color:#fff
-```
+This project implements an **Authenticated Gateway-Assisted DNSSEC Architecture**. An edge gateway handles upstream Unbound DNSSEC validation, extracts the Authenticated Data (AD) flag, and extends cryptographic trust across the last mile to the IoT node via a lightweight **37-byte HMAC-SHA256 authenticated binary frame**.
 
-## 📦 37-Byte Wire Frame Layout
+---
 
-To minimize SRAM overhead and memory copies on the ESP32, resolved DNS records are encapsulated into a fixed 37-byte binary payload:
+## 📽️ Project Demonstrations & Videos
+
+* **Round 1 Demo Video:** [Watch on YouTube]()
+* **Round 2 Final Proof-of-Concept Video:** `[INSERT NEW YOUTUBE VIDEO LINK HERE]`
+
+---
+
+## 🏗️ Solution Architecture & Data Flow
+
++------------------+     UDP/TCP (5353)     +-------------------------+
+|                  | ---------------------> |                         |
+|   IoT Node       |                        |  Unbound Resolver       |
+|   (ESP32)        | <--------------------- |  (Docker Container)     |
+|                  |  37-Byte HMAC Frame    |                         |
++------------------+     Port 8530          +-------------------------+
+        ^                                               |
+        +-----------------------------------------------+
+                         Gateway Proxy
+                     (gateway_proxy.py)
+
+1. **DNSSEC Offloading:** The Unbound Docker container resolves target zones (`secure.aiori.lab`, `bogus.aiori.lab`, `insecure.aiori.lab`) and performs upstream RRSIG validation.
+2. **Payload Packaging:** The Gateway Proxy constructs a 37-byte binary payload:
+   - `0..3`   : IPv4 Address (4 bytes)
+   - `4`      : DNSSEC Status Flag (`0x00` SECURE, `0x01` BOGUS, `0x02` INSECURE, `0x03` UNAUTHENTICATED) (1 byte)
+   - `5..36`  : HMAC-SHA256 Signature over bytes `[0..4]` using Pre-Shared Key (PSK) (32 bytes)
+3. **Last-Mile Verification:** The IoT client verifies the 32-byte HMAC signature against its internal PSK (simulating secure eFuse storage). If valid, the IP address is accepted; if forged, the packet is discarded.
+
+---
+
+## 📊 Threat Matrix & Security Scenarios
+
+| Scenario | Targeted Domain | Gateway DNSSEC State | Client HMAC Verification | System Action / Decision |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. Legitimate Query** | `secure.aiori.lab` | `0x00` (SECURE / AD VERIFIED) | Authentic Signature | **[✓ ACCESS GRANTED]** Connection established (`10.0.0.1`) |
+| **2. Upstream DNS Spoofing** | `bogus.aiori.lab` | `0x01` (BOGUS / INVALID RRSIG) | Authentic Gateway Alert | **[✓ DROPPED]** Spoofing blocked at edge (`0.0.0.0`) |
+| **3. Unsigned Domain** | `insecure.aiori.lab` | `0x02` (INSECURE / UNSIGNED) | Authentic Gateway Alert | **[! WARNING]** Fallback policy applied |
+| **4. Over-the-Air MITM** | `secure.aiori.lab` | `0x00` (Tampered in transit) | Signature Mismatch | **[✓ DROPPED]** Intercepted frame discarded by client |
+| **5. Rogue Gateway Attack** | `secure.aiori.lab` | Untrusted Proxy Key | Invalid PSK / Mismatch | **[✓ DROPPED]** Untrusted gateway rejected at edge |
+
+---
+
+## 📂 Repository Structure
 
 ```text
-+------------------------+------------------------+-----------------------------------+
-| IPv4 Address Payload   | Gateway Status Flag    | HMAC-SHA256 Signature             |
-| (Bytes 0 - 3)          | (Byte 4)               | (Bytes 5 - 36)                    |
-+------------------------+------------------------+-----------------------------------+
-| e.g. 10.0.0.1          | 0x00 (Valid)           | 32-Byte Cryptographic Hash        |
-|                        | 0x01 (BOGUS RRSIG)     | Computed over Bytes 0 - 4         |
-+------------------------+------------------------+-----------------------------------+
-```
-
-## 🛡️ Threat Vector Verification Suite
-
-Our test suite evaluates 5 distinct attack vectors across the network topology:
-
-| Scenario | Attack Vector | Security Mechanism | System Outcome |
-| :--- | :--- | :--- | :--- |
-| **S1** | Legitimate Query (`secure.aiori.lab`) | Unbound DNSSEC + ESP32 `mbedTLS` HMAC | **Approved (0x00)** |
-| **S2** | Upstream DNSSEC Poisoning | Gateway Catch & Null-Route (`0.0.0.0`) | **Gateway Drop (0x01)** |
-| **S3** | Wi-Fi Local Packet Injection | MCU HMAC-SHA256 Signature Comparison | **MCU Discard (0xFE)** |
-| **S4** | Rogue Gateway Impersonation | Shared eFuse Key Verification | **MCU Key Reject** |
-| **S5** | Replay / Stale Payload Attack | Rolling Sequence Counter HMAC | **Replay Reject** |
-
----
-
-## 🚀 Quick Start Guide
-
-### Prerequisites
-* Linux / WSL2 Environment
-* Docker & Docker Compose
-* Python 3.10+ (`streamlit`, `socket`, `hmac`)
-
-### 1. Launch Docker Gateway Services
-docker compose up -d
-
-### 2. Start the Interactive SOC Dashboard
-streamlit run app.py
-
-### 3. Run Automated Terminal Test Suite
-bash demo.sh
-
----
-
-## 📁 Repository Structure
-
-```text
-├── app.py                  # Streamlit SOC Dashboard & Hardware Animator
-├── proxy_gateway.py        # Edge Gateway Proxy & 37-Byte Encoder (Port 8530)
-├── unbound_resolver.py     # Recursive Unbound DNSSEC Validation Wrapper
-├── node_controller.py      # Attack Trajectory Engine & Fallback Simulation
-├── attack_demo.py          # Command-Line Threat Vector Demonstrator
-├── demo.sh                 # End-to-End Test Suite Executable
-├── docker-compose.yml      # Containerized Unbound Resolver Setup
+A3-PS004-TC093/
+├── A3-PS004-TC093.pdf        # Project Technical Proposal & Specifications
+├── README.md                 # Project Overview & Setup Instructions
 └── src/
-    └── main.cpp            # ESP32 C++ mbedTLS Verification Logic
-```
+    ├── app.py                # Streamlit Real-Time Security Dashboard
+    ├── attack_demo.py        # Automated 5-Scenario Security Validation Suite
+    ├── node_controller.py    # Interactive Role-Based Node Simulator (owner / hacker)
+    ├── demo.sh               # Execution Orchestration Script
+    ├── esp32_client/         # IoT Client Implementation & Cryptographic Parser
+    └── gateway/
+        ├── Dockerfile        # Custom Unbound Build File
+        ├── docker-compose.yml# Container Port Mapping (5353) & Volume Config
+        ├── gateway_proxy.py  # 37-Byte Frame Generator & HMAC Signer
+        ├── requirements.txt  # Python Dependencies
+        └── zones/
+            └── zones.conf    # Authoritative DNSSEC Zone Definitions
